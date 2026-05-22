@@ -4,6 +4,7 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
+from src.data.ai_ratings import is_configured as ai_ready
 from src.data.finnhub import is_configured as finnhub_ready
 from src.screener.indicators import CATEGORIES, INDICATORS
 from src.screener.scorer import score_universe
@@ -84,6 +85,11 @@ def _render_tracker_view() -> None:
             "💡 L'indicateur **Insider Buying** sera disponible si tu ajoutes une clé "
             "Finnhub gratuite dans les Secrets Streamlit."
         )
+    if not ai_ready():
+        st.info(
+            "💡 Les critères **Moat / Qualité management / Parts de marché** seront "
+            "estimés par IA si tu ajoutes une clé Anthropic dans les Secrets."
+        )
 
     # ── Choix de l'univers ──────────────────────────────────────────
     universe_choices = list(UNIVERSES.keys()) + ["Liste personnalisée"]
@@ -104,7 +110,19 @@ def _render_tracker_view() -> None:
     n = len(tickers)
     if not tickers:
         return
-    st.caption(f"📊 {n} tickers · 1er scan ≈ {max(1, n // 8)} min (cache 1h ensuite).")
+
+    use_ai = False
+    if ai_ready():
+        use_ai = st.checkbox(
+            "🤖 Activer l'estimation IA (Moat / Management / Parts de marché)",
+            value=True,
+            help="Utilise Claude pour estimer les 3 critères qualitatifs non couverts "
+                 "par yfinance. Coût ~$0.005 par action, cache 7 jours.",
+        )
+
+    base_min = max(1, n // 8)
+    estimate = base_min + (n // 3 if use_ai else 0)
+    st.caption(f"📊 {n} tickers · 1er scan ≈ {estimate} min (cache ensuite).")
 
     if st.button("🚀 Lancer le scan", type="primary"):
         progress = st.progress(0.0, text="Démarrage…")
@@ -112,7 +130,7 @@ def _render_tracker_view() -> None:
         def _cb(pct: float, ticker: str) -> None:
             progress.progress(pct, text=f"Analyse {ticker} ({int(pct * n)}/{n})")
 
-        results = score_universe(tickers, progress_cb=_cb)
+        results = score_universe(tickers, progress_cb=_cb, use_ai=use_ai)
         progress.empty()
         st.session_state[RESULTS_KEY] = results
         st.session_state[UNIVERSE_KEY] = choice

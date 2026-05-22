@@ -265,11 +265,96 @@ def _upside_vs_target(ctx: Context) -> float | None:
     return (target_f - current_f) / current_f * 100
 
 
+def _qualitative(key: str):
+    """Note qualitative : 1) manuelle (priorité) → 2) estimation IA → 3) None."""
+    def extract(ctx: Context) -> float | None:
+        manual = (ctx.get("manual") or {}).get(ctx["ticker"], {}).get(key)
+        if manual is not None:
+            return float(manual)
+        ai = ctx.get("ai_ratings") or {}
+        if key in ai:
+            try:
+                return float(ai[key])
+            except (TypeError, ValueError):
+                return None
+        return None
+    return extract
+
+
 def _manual(key: str):
+    """Note 100% manuelle, override possible mais sans fallback IA."""
     def extract(ctx: Context) -> float | None:
         ratings = ctx.get("manual") or {}
-        return ratings.get(ctx["ticker"], {}).get(key)
+        v = ratings.get(ctx["ticker"], {}).get(key)
+        return float(v) if v is not None else None
     return extract
+
+
+def _revenue_predictability(ctx: Context) -> float | None:
+    """Coefficient de variation des croissances annuelles de CA, en %.
+
+    Plus c'est faible, plus la croissance du CA est régulière (prévisible).
+    """
+    manual = (ctx.get("manual") or {}).get(ctx["ticker"], {}).get("revenue_predictability")
+    if manual is not None:
+        return float(manual)  # Note manuelle override le calcul
+
+    row = _find_row(ctx.get("financials"), "Total Revenue", "Revenue", "TotalRevenue")
+    if row is None:
+        return None
+    values = row.dropna().sort_index()
+    if len(values) < 3:
+        return None
+    vals = [float(v) for v in values.values]
+    growths = [
+        (vals[i] - vals[i - 1]) / abs(vals[i - 1])
+        for i in range(1, len(vals)) if vals[i - 1] != 0
+    ]
+    if len(growths) < 2:
+        return None
+    mean = sum(growths) / len(growths)
+    std = (sum((g - mean) ** 2 for g in growths) / len(growths)) ** 0.5
+    if abs(mean) < 0.005:
+        return std * 100
+    return std / abs(mean) * 100
+
+
+def _revenue_predictability_scorer(v: float | None) -> int | None:
+    if v is None:
+        return None
+    # Le scorer reconnaît la note manuelle (0/50/100) telle quelle ;
+    # sinon c'est un CV % à interpréter (lower = better).
+    if v in (0, 50, 100):
+        return int(v)
+    if v <= 30:
+        return 100
+    if v <= 80:
+        return 50
+    return 0
+
+
+def _capital_allocation(ctx: Context) -> float | None:
+    """Note d'allocation du capital, approximée via le ROIC.
+
+    Un ROIC élevé indique que le management déploie le capital de
+    manière efficiente. La note manuelle override ce calcul.
+    """
+    manual = (ctx.get("manual") or {}).get(ctx["ticker"], {}).get("capital_allocation")
+    if manual is not None:
+        return float(manual)
+    return _roic(ctx)
+
+
+def _capital_allocation_scorer(v: float | None) -> int | None:
+    if v is None:
+        return None
+    if v in (0, 50, 100):
+        return int(v)
+    if v >= 15:
+        return 100
+    if v >= 8:
+        return 50
+    return 0
 
 
 # ────────────────────────── indicators ──────────────────────────
@@ -346,19 +431,19 @@ INDICATORS: list[Indicator] = [
               _dividend_growth,
               _higher_better(excellent=7, neutral=0), fmt="{:+.1f} %"),
     # ── Qualité ────────────────────────────────────────────────
-    Indicator("moat", "Moat (manuel)", "Qualité",
-              _manual("moat"), _passthrough, fmt="{:.0f}"),
+    Indicator("moat", "Moat", "Qualité",
+              _qualitative("moat"), _passthrough, fmt="{:.0f}"),
+    Indicator("management_quality", "Qualité management", "Qualité",
+              _qualitative("management_quality"), _passthrough, fmt="{:.0f}"),
+    Indicator("market_share", "Parts de marché", "Qualité",
+              _qualitative("market_share"), _passthrough, fmt="{:.0f}"),
+    Indicator("capital_allocation", "Allocation du capital", "Qualité",
+              _capital_allocation, _capital_allocation_scorer, fmt="{:.1f}"),
+    Indicator("revenue_predictability", "Prévisibilité revenus", "Qualité",
+              _revenue_predictability, _revenue_predictability_scorer, fmt="{:.1f}"),
     Indicator("insider", "Insider Buying", "Qualité",
               _insider_ratio,
               _band(excellent=(0.3, 1.01), neutral=(-0.3, 0.3)), fmt="{:+.2f}"),
-    Indicator("market_share", "Parts de marché (manuel)", "Qualité",
-              _manual("market_share"), _passthrough, fmt="{:.0f}"),
-    Indicator("capital_allocation", "Allocation du capital (manuel)", "Qualité",
-              _manual("capital_allocation"), _passthrough, fmt="{:.0f}"),
-    Indicator("management_quality", "Qualité management (manuel)", "Qualité",
-              _manual("management_quality"), _passthrough, fmt="{:.0f}"),
-    Indicator("revenue_predictability", "Prévisibilité revenus (manuel)", "Qualité",
-              _manual("revenue_predictability"), _passthrough, fmt="{:.0f}"),
 ]
 
 CATEGORIES = [

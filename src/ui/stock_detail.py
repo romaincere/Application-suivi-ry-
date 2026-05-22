@@ -5,6 +5,7 @@ import pandas as pd
 import plotly.graph_objects as go
 import streamlit as st
 
+from src.data.ai_ratings import get_ai_ratings, is_configured as ai_ready
 from src.data.market import get_financials, get_info
 from src.screener.indicators import (
     CATEGORIES,
@@ -192,7 +193,8 @@ def _key_metrics(score_data: dict, info: dict) -> None:
 def render(ticker: str, on_back) -> None:
     """Affiche la fiche détaillée pour `ticker`. `on_back` ferme la fiche."""
     info = get_info(ticker)
-    score_data = score_ticker(ticker)
+    # On enrichit avec l'IA si configurée (cache 7j, donc gratuit ensuite)
+    score_data = score_ticker(ticker, use_ai=ai_ready())
 
     # ── Header ──────────────────────────────────────────────────────
     c_back, c_title, c_score = st.columns([1, 4, 2])
@@ -256,11 +258,39 @@ def render(ticker: str, on_back) -> None:
 
     st.divider()
 
-    # ── Critères qualitatifs (manuels) ──────────────────────────────
-    st.markdown("### Critères qualitatifs")
+    # ── Analyse IA (Claude) ─────────────────────────────────────────
+    if ai_ready():
+        ai = score_data.get("ai_ratings")
+        st.markdown("### 🤖 Analyse IA (Claude)")
+        if ai:
+            ai_cols = st.columns(3)
+            labels = {
+                "moat": ("Moat", ["Aucun", "Étroit", "Large"]),
+                "management_quality": ("Qualité management",
+                                       ["Décevant", "Fiable", "Remarquable"]),
+                "market_share": ("Parts de marché",
+                                 ["En baisse", "Stables", "En hausse"]),
+            }
+            for col, (key, (lbl, scale)) in zip(ai_cols, labels.items()):
+                score = ai.get(key)
+                with col:
+                    _manual_rating_bar(lbl, scale, score)
+            if ai.get("reasoning"):
+                st.caption(f"💭 {ai['reasoning']}")
+            st.caption("⚠️ Estimation IA non factuelle. Tu peux l'override "
+                       "en saisissant tes propres notes manuelles ci-dessous.")
+        else:
+            if st.button("🤖 Lancer l'analyse IA"):
+                get_ai_ratings.clear()
+                st.cache_data.clear()
+                st.rerun()
+        st.divider()
+
+    # ── Critères qualitatifs (override manuel) ──────────────────────
+    st.markdown("### Critères qualitatifs (saisie manuelle)")
     st.caption(
-        "Notation manuelle : ces critères ne sont pas calculables automatiquement. "
-        "Mets à jour avec ton appréciation."
+        "Tes notes manuelles **override** l'estimation IA et les calculs automatiques. "
+        "Laisse à « — » pour conserver la valeur auto/IA."
     )
 
     ratings = load_ratings().get(ticker.upper(), {})

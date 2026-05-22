@@ -5,6 +5,7 @@ from typing import Any
 
 import streamlit as st
 
+from src.data.ai_ratings import get_ai_ratings, is_configured as ai_ready
 from src.data.finnhub import insider_transactions, is_configured as finnhub_ready
 from src.data.market import (
     get_balance_sheet,
@@ -19,10 +20,20 @@ from src.storage.ratings_store import load_ratings
 
 
 @st.cache_data(ttl=3600, show_spinner=False)
-def score_ticker(ticker: str) -> dict[str, Any]:
-    """Évalue un ticker selon tous les indicateurs disponibles."""
+def score_ticker(ticker: str, use_ai: bool = False) -> dict[str, Any]:
+    """Évalue un ticker selon tous les indicateurs disponibles.
+
+    Si `use_ai=True` et qu'une clé Anthropic est configurée, complète
+    Moat / Qualité management / Parts de marché par une estimation IA
+    (uniquement pour les critères non déjà notés manuellement).
+    """
     info = get_info(ticker)
     name = info.get("shortName") or info.get("longName") or ticker
+
+    manual = load_ratings()
+    ai_ratings = None
+    if use_ai and ai_ready():
+        ai_ratings = get_ai_ratings(ticker, name, info)
 
     ctx = {
         "ticker": ticker.upper(),
@@ -33,7 +44,8 @@ def score_ticker(ticker: str) -> dict[str, Any]:
         "cashflow": get_cashflow(ticker),
         "dividends": get_dividends(ticker),
         "insider": insider_transactions(ticker) if finnhub_ready() else None,
-        "manual": load_ratings(),
+        "manual": manual,
+        "ai_ratings": ai_ratings,
     }
 
     results: dict[str, dict[str, Any]] = {}
@@ -64,6 +76,7 @@ def score_ticker(ticker: str) -> dict[str, Any]:
         "n_available": len(notes),
         "indicators": results,
         "category_scores": cat_scores,
+        "ai_ratings": ai_ratings,
     }
 
 
@@ -74,13 +87,15 @@ def _safe(fn, *args):
         return None
 
 
-def score_universe(tickers: list[str], progress_cb=None) -> list[dict[str, Any]]:
+def score_universe(
+    tickers: list[str], progress_cb=None, use_ai: bool = False
+) -> list[dict[str, Any]]:
     """Score tous les tickers, trié par score global décroissant."""
     results = []
     total = len(tickers)
     for i, t in enumerate(tickers, 1):
         try:
-            results.append(score_ticker(t))
+            results.append(score_ticker(t, use_ai=use_ai))
         except Exception:
             pass
         if progress_cb:
