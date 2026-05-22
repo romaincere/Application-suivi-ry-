@@ -4,10 +4,12 @@ from __future__ import annotations
 import pandas as pd
 import streamlit as st
 
-from src.screener.indicators import CATEGORIES, INDICATORS
+from src.data.finnhub import is_configured as finnhub_ready
+from src.screener.indicators import CATEGORIES, INDICATORS, MANUAL_KEYS
 from src.screener.scorer import score_universe
 from src.screener.universe import UNIVERSES
 from src.storage.portfolio_store import load_portfolio
+from src.storage.ratings_store import load_ratings, set_rating
 
 
 def _score_color(score: float | None) -> str:
@@ -78,12 +80,71 @@ def _render_table(df: pd.DataFrame, score_cols: list[str]) -> None:
     )
 
 
+def _manual_ratings_form() -> None:
+    """Formulaire pour noter manuellement Moat et Parts de marché par ticker."""
+    with st.expander("✍️ Notes manuelles (Moat / Parts de marché)"):
+        st.caption(
+            "Ces deux indicateurs ne sont pas calculables automatiquement. "
+            "Note ici les actions que tu suis : ces notes seront incluses dans le score global."
+        )
+
+        ratings = load_ratings()
+        portfolio = load_portfolio()
+        suggested = sorted({p["ticker"] for p in portfolio} | set(ratings.keys()))
+
+        c1, c2, c3, c4 = st.columns([2, 1, 1, 1])
+        ticker_input = c1.text_input(
+            "Ticker", placeholder="AAPL, MC.PA…",
+            help=f"Tickers déjà notés : {', '.join(suggested) if suggested else 'aucun'}",
+        ).strip().upper()
+        moat_options = ["—", "Faible (0)", "Moyen (50)", "Fort (100)"]
+        moat_choice = c2.selectbox("Moat", moat_options, key="moat_select")
+        ms_choice = c3.selectbox("Parts de marché", moat_options, key="ms_select")
+
+        def _to_score(choice: str) -> int | None:
+            return {"Faible (0)": 0, "Moyen (50)": 50, "Fort (100)": 100}.get(choice)
+
+        if c4.button("Enregistrer", use_container_width=True):
+            if not ticker_input:
+                st.error("Saisis un ticker.")
+            else:
+                set_rating(ticker_input, "moat", _to_score(moat_choice))
+                set_rating(ticker_input, "market_share", _to_score(ms_choice))
+                # Invalide le cache du scorer pour ce ticker
+                st.cache_data.clear()
+                st.success(f"Notes enregistrées pour {ticker_input}.")
+                st.rerun()
+
+        if ratings:
+            st.markdown("**Notes enregistrées :**")
+            df = pd.DataFrame(
+                [
+                    {
+                        "Ticker": t,
+                        "Moat": r.get("moat", "—"),
+                        "Parts de marché": r.get("market_share", "—"),
+                    }
+                    for t, r in sorted(ratings.items())
+                ]
+            )
+            st.dataframe(df, use_container_width=True, hide_index=True)
+
+
 def render() -> None:
     st.title("🎯 Screener d'actions à fort potentiel")
     st.caption(
-        "Note chaque action sur 100 selon 12 indicateurs (croissance, rentabilité, "
-        "valorisation, solidité, momentum) et classe par score décroissant."
+        f"Note chaque action sur 100 selon {len(INDICATORS)} indicateurs "
+        "(croissance, rentabilité, valorisation, solidité, momentum, qualité) "
+        "et classe par score décroissant."
     )
+
+    if not finnhub_ready():
+        st.info(
+            "💡 L'indicateur **Insider Buying** sera disponible si tu ajoutes une clé "
+            "Finnhub gratuite (https://finnhub.io) dans `st.secrets['finnhub_api_key']`."
+        )
+
+    _manual_ratings_form()
 
     # ── Choix de l'univers ──────────────────────────────────────────
     portfolio = load_portfolio()
@@ -179,28 +240,31 @@ def render() -> None:
         st.markdown(
             """
             **Méthodologie**
-            - Chaque indicateur disponible reçoit une note **0** (mauvais), **50** (neutre) ou **100** (excellent), d'après les seuils définis.
-            - Le **score global** est la moyenne des notes disponibles (les indicateurs manquants sont ignorés, pas pénalisés).
+            - Chaque indicateur disponible reçoit une note **0** (mauvais), **50** (neutre) ou **100** (excellent).
+            - Le **score global** est la moyenne des notes disponibles (les indicateurs manquants sont ignorés).
             - Le **score par catégorie** est la moyenne des notes de cette catégorie.
 
             **Seuils par indicateur**
 
-            | Catégorie | Indicateur | Excellent | Neutre | Mauvais |
-            |---|---|---|---|---|
-            | Croissance | Croissance CA | >15% | 5-15% | <5% |
-            | Croissance | Croissance EPS | >20% | 5-20% | <5% |
-            | Rentabilité | ROE | >15% | 8-15% | <8% |
-            | Rentabilité | Marge nette | >15% | 5-15% | <5% |
-            | Valorisation | PER | 10-25 | 5-40 | >40 ou <5 |
-            | Valorisation | PEG | <1.5 | 1.5-2.5 | >2.5 |
-            | Valorisation | P/S | <5 | 5-10 | >10 |
-            | Solidité | Debt/Equity | <1 | 1-2 | >2 |
-            | Solidité | Current Ratio | >1.5 | 1-1.5 | <1 |
-            | Momentum | MM50/MM200 | >1.0 (golden) | 0.98-1.0 | <0.98 |
-            | Momentum | RSI 14 | 40-65 | 30-70 | <30 ou >70 |
-            | Momentum | Perf 1A | >20% | 0-20% | <0% |
-
-            Les indicateurs qualitatifs (Moat, Insider Buying, Parts de marché)
-            ne sont pas inclus car non disponibles via yfinance.
+            | Catégorie | Indicateur | Excellent | Neutre | Mauvais | Source |
+            |---|---|---|---|---|---|
+            | Croissance | Croissance CA | >15% | 5-15% | <5% | yfinance |
+            | Croissance | Croissance EPS | >20% | 5-20% | <5% | yfinance |
+            | Croissance | CAGR CA 5A | >15% | 5-15% | <5% | yfinance financials |
+            | Rentabilité | ROE | >15% | 8-15% | <8% | yfinance |
+            | Rentabilité | ROIC | >12% | 6-12% | <6% | yfinance financials + balance |
+            | Rentabilité | Marge nette | >15% | 5-15% | <5% | yfinance |
+            | Valorisation | PER | 10-25 | 5-40 | >40 ou <5 | yfinance |
+            | Valorisation | PEG | <1.5 | 1.5-2.5 | >2.5 | yfinance |
+            | Valorisation | Price/Sales | <5 | 5-10 | >10 | yfinance |
+            | Solidité | Debt/Equity | <1 | 1-2 | >2 | yfinance |
+            | Solidité | FCF (croissance) | >15% / an | 0-15% | <0 ou négatif | yfinance cashflow |
+            | Solidité | Current Ratio | >1.5 | 1-1.5 | <1 | yfinance |
+            | Momentum | MM50/MM200 | >1.0 | 0.98-1.0 | <0.98 | yfinance history |
+            | Momentum | RSI 14 | 40-65 | 30-70 | <30 ou >70 | yfinance history |
+            | Momentum | Performance 1A | >20% | 0-20% | <0% | yfinance history |
+            | Qualité | Moat | Note manuelle 100 | 50 | 0 | Saisie manuelle |
+            | Qualité | Insider Buying | ratio >0.3 | -0.3 à 0.3 | <-0.3 | Finnhub (clé API) |
+            | Qualité | Parts de marché | Note manuelle 100 | 50 | 0 | Saisie manuelle |
             """
         )

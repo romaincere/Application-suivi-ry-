@@ -49,6 +49,36 @@ def get_info(ticker: str) -> dict:
         return {}
 
 
+@st.cache_data(ttl=86400, show_spinner=False)
+def get_financials(ticker: str) -> pd.DataFrame:
+    """Compte de résultat annuel (4 dernières années)."""
+    try:
+        df = yf.Ticker(ticker).financials
+        return df if df is not None else pd.DataFrame()
+    except Exception:
+        return pd.DataFrame()
+
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def get_balance_sheet(ticker: str) -> pd.DataFrame:
+    """Bilan annuel (4 dernières années)."""
+    try:
+        df = yf.Ticker(ticker).balance_sheet
+        return df if df is not None else pd.DataFrame()
+    except Exception:
+        return pd.DataFrame()
+
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def get_cashflow(ticker: str) -> pd.DataFrame:
+    """Tableau de flux de trésorerie annuel (4 dernières années)."""
+    try:
+        df = yf.Ticker(ticker).cashflow
+        return df if df is not None else pd.DataFrame()
+    except Exception:
+        return pd.DataFrame()
+
+
 @st.cache_data(ttl=600, show_spinner=False)
 def get_fx_rate(currency_from: str, currency_to: str = "EUR") -> float | None:
     """Taux de change : 1 unité de `currency_from` → N unités de `currency_to`.
