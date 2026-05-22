@@ -203,6 +203,31 @@ def _insider_ratio(ctx: Context) -> float | None:
     return insider.get("ratio")
 
 
+def _upside_vs_target(ctx: Context) -> float | None:
+    """Décote/prime du cours actuel vs objectif moyen des analystes (%).
+
+    >0 → action sous-évaluée (le marché est en-dessous du juste prix consensus).
+    <0 → action surévaluée (le marché a déjà dépassé le juste prix).
+    """
+    info = ctx["info"]
+    target = info.get("targetMeanPrice") or info.get("targetMedianPrice")
+    current = (
+        info.get("currentPrice")
+        or info.get("regularMarketPrice")
+        or info.get("previousClose")
+    )
+    if not target or not current:
+        return None
+    try:
+        target_f = float(target)
+        current_f = float(current)
+    except (TypeError, ValueError):
+        return None
+    if target_f <= 0 or current_f <= 0:
+        return None
+    return (target_f - current_f) / current_f * 100
+
+
 def _manual(key: str):
     def extract(ctx: Context) -> float | None:
         ratings = ctx.get("manual") or {}
@@ -254,6 +279,9 @@ INDICATORS: list[Indicator] = [
     Indicator("ps", "Price to Sales", "Valorisation",
               _from_info("priceToSalesTrailing12Months"),
               _lower_better(excellent=5, neutral=10)),
+    Indicator("upside", "Upside vs juste prix", "Valorisation",
+              _upside_vs_target,
+              _higher_better(excellent=15, neutral=0), fmt="{:+.1f} %"),
     # ── Solidité ───────────────────────────────────────────────
     Indicator("debt_equity", "Debt / Equity", "Solidité",
               _from_info("debtToEquity", scale=0.01),

@@ -257,6 +257,7 @@ def render() -> None:
             | Valorisation | PER | 10-25 | 5-40 | >40 ou <5 | yfinance |
             | Valorisation | PEG | <1.5 | 1.5-2.5 | >2.5 | yfinance |
             | Valorisation | Price/Sales | <5 | 5-10 | >10 | yfinance |
+            | Valorisation | Upside vs juste prix | >+15% | 0-15% | <0% (surévaluée) | yfinance (target consensus) |
             | Solidité | Debt/Equity | <1 | 1-2 | >2 | yfinance |
             | Solidité | FCF (croissance) | >15% / an | 0-15% | <0 ou négatif | yfinance cashflow |
             | Solidité | Current Ratio | >1.5 | 1-1.5 | <1 | yfinance |
