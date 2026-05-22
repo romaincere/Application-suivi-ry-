@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+
+# Streamlit secrets (jamais en clair dans le repo)
+.streamlit/secrets.toml
+
+# Env locaux
+.env
+.env.local
+
+# IDE / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Note : data/portfolio.enc est versionné car son contenu est chiffré.
