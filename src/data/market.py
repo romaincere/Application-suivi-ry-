@@ -8,13 +8,16 @@ import yfinance as yf
 
 @st.cache_data(ttl=300, show_spinner=False)
 def get_quote(ticker: str) -> dict | None:
-    """Cote temps réel (prix, devise, clôture précédente)."""
+    """Cote temps réel + nom + devise."""
     try:
-        fast = yf.Ticker(ticker).fast_info
+        t = yf.Ticker(ticker)
+        fast = t.fast_info
+        info = t.info or {}
         return {
             "ticker": ticker,
+            "name": info.get("shortName") or info.get("longName") or ticker,
             "price": float(fast.last_price) if fast.last_price else None,
-            "currency": fast.currency,
+            "currency": fast.currency or info.get("currency") or "EUR",
             "previous_close": (
                 float(fast.previous_close) if fast.previous_close else None
             ),
@@ -44,3 +47,22 @@ def get_info(ticker: str) -> dict:
         return yf.Ticker(ticker).info or {}
     except Exception:
         return {}
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def get_fx_rate(currency_from: str, currency_to: str = "EUR") -> float | None:
+    """Taux de change : 1 unité de `currency_from` → N unités de `currency_to`.
+
+    Utilise les tickers Yahoo `<base><quote>=X` (ex. `EURUSD=X` → combien de USD
+    pour 1 EUR).
+    """
+    if currency_from == currency_to or not currency_from:
+        return 1.0
+    try:
+        ticker = f"{currency_to}{currency_from}=X"
+        rate = float(yf.Ticker(ticker).fast_info.last_price)
+        if not rate:
+            return None
+        return 1.0 / rate
+    except Exception:
+        return None
