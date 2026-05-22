@@ -4,7 +4,7 @@ from __future__ import annotations
 import streamlit as st
 
 from src.auth.password import require_password
-from src.ui import portfolio_page, screener_page, stock_detail_page
+from src.ui import portfolio_page, screener_page
 
 st.set_page_config(
     page_title="Mon Portefeuille",
@@ -29,7 +29,6 @@ require_password()
 
 PAGES = {
     "📊 Mon Portefeuille": portfolio_page.render,
-    "🔍 Détail d'une action": stock_detail_page.render,
     "🎯 Screener": screener_page.render,
 }
 
