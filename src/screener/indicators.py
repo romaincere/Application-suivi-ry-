@@ -203,6 +203,43 @@ def _insider_ratio(ctx: Context) -> float | None:
     return insider.get("ratio")
 
 
+def _dividend_yield(ctx: Context) -> float | None:
+    """Rendement du dividende (%). Calculé sur dividendRate / currentPrice."""
+    info = ctx["info"]
+    rate = info.get("dividendRate") or info.get("trailingAnnualDividendRate")
+    price = info.get("currentPrice") or info.get("regularMarketPrice")
+    if rate and price:
+        try:
+            return float(rate) / float(price) * 100
+        except (TypeError, ValueError, ZeroDivisionError):
+            pass
+    y = info.get("dividendYield") or info.get("trailingAnnualDividendYield")
+    if y is None:
+        return None
+    try:
+        y_f = float(y)
+    except (TypeError, ValueError):
+        return None
+    return y_f * 100 if y_f < 1 else y_f
+
+
+def _dividend_growth(ctx: Context) -> float | None:
+    """CAGR du dividende annuel sur 5 ans glissants (ou ce qui est dispo)."""
+    divs = ctx.get("dividends")
+    if divs is None or len(divs) < 2:
+        return None
+    yearly = divs.resample("YE").sum()
+    yearly = yearly[yearly > 0]
+    if len(yearly) < 2:
+        return None
+    yearly = yearly.tail(5)
+    first, last = float(yearly.iloc[0]), float(yearly.iloc[-1])
+    n_years = len(yearly) - 1
+    if first <= 0 or n_years == 0:
+        return None
+    return ((last / first) ** (1 / n_years) - 1) * 100
+
+
 def _upside_vs_target(ctx: Context) -> float | None:
     """Décote/prime du cours actuel vs objectif moyen des analystes (%).
 
@@ -301,6 +338,13 @@ INDICATORS: list[Indicator] = [
     Indicator("perf_1y", "Performance 1A", "Momentum",
               _perf_1y,
               _higher_better(excellent=20, neutral=0), fmt="{:+.1f} %"),
+    # ── Dividende ──────────────────────────────────────────────
+    Indicator("div_yield", "Rendement dividende", "Dividende",
+              _dividend_yield,
+              _higher_better(excellent=4, neutral=2), fmt="{:.2f} %"),
+    Indicator("div_growth", "Croissance dividende", "Dividende",
+              _dividend_growth,
+              _higher_better(excellent=7, neutral=0), fmt="{:+.1f} %"),
     # ── Qualité ────────────────────────────────────────────────
     Indicator("moat", "Moat (manuel)", "Qualité",
               _manual("moat"), _passthrough, fmt="{:.0f}"),
@@ -309,7 +353,30 @@ INDICATORS: list[Indicator] = [
               _band(excellent=(0.3, 1.01), neutral=(-0.3, 0.3)), fmt="{:+.2f}"),
     Indicator("market_share", "Parts de marché (manuel)", "Qualité",
               _manual("market_share"), _passthrough, fmt="{:.0f}"),
+    Indicator("capital_allocation", "Allocation du capital (manuel)", "Qualité",
+              _manual("capital_allocation"), _passthrough, fmt="{:.0f}"),
+    Indicator("management_quality", "Qualité management (manuel)", "Qualité",
+              _manual("management_quality"), _passthrough, fmt="{:.0f}"),
+    Indicator("revenue_predictability", "Prévisibilité revenus (manuel)", "Qualité",
+              _manual("revenue_predictability"), _passthrough, fmt="{:.0f}"),
 ]
 
-CATEGORIES = ["Croissance", "Rentabilité", "Valorisation", "Solidité", "Momentum", "Qualité"]
-MANUAL_KEYS = ["moat", "market_share"]
+CATEGORIES = [
+    "Croissance", "Rentabilité", "Valorisation", "Solidité",
+    "Momentum", "Dividende", "Qualité",
+]
+
+# Labels affichés pour les 5 critères qualitatifs manuels (UI fiche détaillée).
+MANUAL_RATINGS_UI: list[dict] = [
+    {"key": "moat", "label": "Moat",
+     "scale": ["Aucun", "Étroit", "Large"]},
+    {"key": "capital_allocation", "label": "Allocation du capital",
+     "scale": ["Pauvre", "Standard", "Exemplaire"]},
+    {"key": "management_quality", "label": "Qualité du management",
+     "scale": ["Décevant", "Fiable", "Remarquable"]},
+    {"key": "revenue_predictability", "label": "Prévisibilité des revenus",
+     "scale": ["Opaque", "Lisible", "Prévisible"]},
+    {"key": "market_share", "label": "Parts de marché",
+     "scale": ["En baisse", "Stables", "En hausse"]},
+]
+MANUAL_KEYS = [r["key"] for r in MANUAL_RATINGS_UI]

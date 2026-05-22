@@ -9,6 +9,7 @@ from src.data.finnhub import insider_transactions, is_configured as finnhub_read
 from src.data.market import (
     get_balance_sheet,
     get_cashflow,
+    get_dividends,
     get_financials,
     get_history,
     get_info,
@@ -30,6 +31,7 @@ def score_ticker(ticker: str) -> dict[str, Any]:
         "financials": get_financials(ticker),
         "balance_sheet": get_balance_sheet(ticker),
         "cashflow": get_cashflow(ticker),
+        "dividends": get_dividends(ticker),
         "insider": insider_transactions(ticker) if finnhub_ready() else None,
         "manual": load_ratings(),
     }

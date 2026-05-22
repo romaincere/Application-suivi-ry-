@@ -79,6 +79,16 @@ def get_cashflow(ticker: str) -> pd.DataFrame:
         return pd.DataFrame()
 
 
+@st.cache_data(ttl=86400, show_spinner=False)
+def get_dividends(ticker: str) -> pd.Series:
+    """Historique des versements de dividendes (date → montant)."""
+    try:
+        s = yf.Ticker(ticker).dividends
+        return s if s is not None else pd.Series(dtype=float)
+    except Exception:
+        return pd.Series(dtype=float)
+
+
 @st.cache_data(ttl=600, show_spinner=False)
 def get_fx_rate(currency_from: str, currency_to: str = "EUR") -> float | None:
     """Taux de change : 1 unité de `currency_from` → N unités de `currency_to`.
