@@ -18,15 +18,28 @@ def _format_money(value: float | None, currency: str = "EUR") -> str:
 
 
 def _kpis(agg: dict) -> None:
-    c1, c2, c3, c4 = st.columns(4)
-    c1.metric("Valeur totale", _format_money(agg["value"], "EUR"))
+    c1, c2, c3 = st.columns(3)
+    c1.metric(
+        "Valeur du portefeuille",
+        _format_money(agg["value"], "EUR"),
+        help="Valorisation actuelle de toutes tes positions, convertie en EUR.",
+    )
     pnl = agg["pnl"]
     pnl_pct = agg["pnl_pct"]
     pnl_str = _format_money(pnl, "EUR") if pnl is not None else "—"
-    delta = f"{pnl_pct:+.2f}%" if pnl_pct is not None else None
-    c2.metric("P&L total", pnl_str, delta=delta)
-    c3.metric("Investi", _format_money(agg["cost"], "EUR"))
-    c4.metric("Positions", str(agg["n_positions"]))
+    delta_pnl = f"{pnl_pct:+.2f}%" if pnl_pct is not None else None
+    c2.metric(
+        "Plus-value (€)",
+        pnl_str,
+        delta=delta_pnl,
+        help="Plus-value latente : différence entre la valeur actuelle et le capital investi.",
+    )
+    pnl_pct_str = f"{pnl_pct:+.2f} %" if pnl_pct is not None else "—"
+    c3.metric(
+        "Plus-value (%)",
+        pnl_pct_str,
+        help="Performance globale du portefeuille depuis l'achat.",
+    )
 
 
 def _positions_table(enriched: list) -> None:
@@ -44,12 +57,12 @@ def _positions_table(enriched: list) -> None:
                 "Nom": p.name,
                 "Qté": p.quantity,
                 "PRU": p.purchase_price,
-                "Cours": p.price,
+                "Cours actuel": p.price,
                 "Devise": p.currency,
-                "Valeur": p.value,
-                "P&L": p.pnl,
-                "P&L %": p.pnl_pct,
-                "Poids %": weight,
+                "Valeur (€)": p.value_eur,
+                "Plus-value (€)": p.pnl_eur,
+                "Plus-value (%)": p.pnl_pct,
+                "Poids (%)": weight,
             }
         )
 
@@ -60,12 +73,20 @@ def _positions_table(enriched: list) -> None:
         hide_index=True,
         column_config={
             "Qté": st.column_config.NumberColumn(format="%.2f"),
-            "PRU": st.column_config.NumberColumn(format="%.2f"),
-            "Cours": st.column_config.NumberColumn(format="%.2f"),
-            "Valeur": st.column_config.NumberColumn(format="%.2f"),
-            "P&L": st.column_config.NumberColumn(format="%.2f"),
-            "P&L %": st.column_config.NumberColumn(format="%+.2f%%"),
-            "Poids %": st.column_config.ProgressColumn(
+            "PRU": st.column_config.NumberColumn(
+                format="%.2f", help="Prix d'achat dans la devise native de l'action."
+            ),
+            "Cours actuel": st.column_config.NumberColumn(
+                format="%.2f", help="Cours en temps réel dans la devise native."
+            ),
+            "Valeur (€)": st.column_config.NumberColumn(
+                format="%.2f €", help="Valorisation convertie en euros."
+            ),
+            "Plus-value (€)": st.column_config.NumberColumn(
+                format="%.2f €", help="Plus-value latente en euros."
+            ),
+            "Plus-value (%)": st.column_config.NumberColumn(format="%+.2f%%"),
+            "Poids (%)": st.column_config.ProgressColumn(
                 format="%.1f%%", min_value=0, max_value=100
             ),
         },
