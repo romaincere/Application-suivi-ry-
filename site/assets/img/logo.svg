@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" role="img" aria-label="Berdea Paysage">
+  <defs>
+    <linearGradient id="leaf" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#3a7d52"/>
+      <stop offset="1" stop-color="#1b4332"/>
+    </linearGradient>
+  </defs>
+  <circle cx="100" cy="100" r="96" fill="#ffffff" stroke="#1b4332" stroke-width="4"/>
+  <!-- Foliage: stylised rounded tree canopy -->
+  <g fill="url(#leaf)">
+    <circle cx="100" cy="78" r="42"/>
+    <circle cx="68" cy="98" r="30"/>
+    <circle cx="132" cy="98" r="30"/>
+    <circle cx="100" cy="108" r="34"/>
+  </g>
+  <!-- Trunk -->
+  <rect x="94" y="108" width="12" height="44" rx="5" fill="#6b4a2b"/>
+  <!-- Inner leaf veins suggestion -->
+  <path d="M100 56 V150" stroke="#ffffff" stroke-width="3" stroke-linecap="round" opacity="0.55"/>
+  <path d="M100 86 L80 70 M100 86 L120 70 M100 104 L78 90 M100 104 L122 90" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" opacity="0.45" fill="none"/>
+</svg>
