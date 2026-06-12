@@ -35,6 +35,29 @@ et identifier des opportunités via un screener fondamental + technique.
         └── screener_page.py    # Page Screener (Phase 4)
 ```
 
+## 🎯 Risk score (école Buffett/Munger × Graham)
+
+Chaque fiche action affiche un **risk score sur 100 points**, repondéré en
+4 piliers à partir des indicateurs déjà calculés :
+
+| Pilier | Poids | Contenu |
+|---|---|---|
+| Valorisation | /30 | P/E, PEG, P/S, décote vs juste prix consensus |
+| Santé financière | /30 | Dette/fonds propres, tendance du FCF, liquidité |
+| Croissance | /25 | Croissance CA & EPS, CAGR 5 ans, prévisibilité |
+| Qualité & moat | /15 | Moat, ROE/ROIC, marge nette, allocation du capital |
+
+- **Convention** : score élevé = qualité × marge de sécurité = **risque faible**.
+  Le verdict en découle : `🟢 LOW-RISK` (≥75), `🟡 MEDIUM-RISK` (60-74),
+  `🔴 HIGH-RISK` (<60).
+- La fiche présente : un **tableau des piliers étoilés**, les **5 chiffres clés**,
+  **le seul reproche majeur** et **3 catalyseurs** à surveiller.
+- Le scoring est **100 % déterministe** (fonctionne sans clé API). Si une clé
+  Anthropic est configurée, Claude rédige le reproche et les catalyseurs ;
+  sinon un repli heuristique prend le relais (clairement signalé).
+- ⚖️ **Ce n'est pas un conseil en investissement.** Chiffres issus de yfinance
+  (TTM / derniers exercices), à recouper avec les documents primaires.
+
 ## 🚀 Lancer l'app en local
 
 ### 1. Prérequis

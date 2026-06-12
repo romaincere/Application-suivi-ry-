@@ -6,12 +6,14 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from src.data.ai_ratings import get_ai_ratings, is_configured as ai_ready
+from src.data.ai_risk import get_risk_narrative
 from src.data.market import get_financials, get_info
 from src.screener.indicators import (
     CATEGORIES,
     INDICATORS,
     MANUAL_RATINGS_UI,
 )
+from src.screener.risk_score import compute_risk_score
 from src.screener.scorer import score_ticker
 from src.storage.ratings_store import load_ratings, set_rating
 from src.storage.thesis_store import get_thesis, save_thesis
@@ -190,6 +192,73 @@ def _key_metrics(score_data: dict, info: dict) -> None:
             st.metric(label, _val(key))
 
 
+def _render_risk_score(ticker: str, name: str, info: dict, score_data: dict) -> None:
+    """Carte de risk score : verdict, 4 piliers étoilés, chiffres clés,
+    reproche majeur, catalyseurs et disclaimer."""
+    risk = compute_risk_score(score_data)
+    verdict = risk["verdict"]
+    total = risk["total"]
+    total_str = f"{total:.0f}" if total is not None else "—"
+
+    # ── Bandeau verdict ──────────────────────────────────────────────
+    st.markdown("### 🎯 Risk score")
+    st.markdown(
+        f"<div style='display:flex;align-items:center;gap:18px;"
+        f"background:{verdict['color']}1A;border-left:5px solid {verdict['color']};"
+        f"border-radius:10px;padding:14px 18px;margin-bottom:6px;'>"
+        f"<div style='font-size:40px;font-weight:700;color:{verdict['color']};"
+        f"line-height:1;'>{total_str}<span style='font-size:15px;color:#888;'> / 100</span></div>"
+        f"<div><div style='font-size:20px;font-weight:700;color:{verdict['color']};'>"
+        f"{verdict['emoji']} {verdict['label']}</div>"
+        f"<div style='font-size:12px;color:#888;'>Score élevé = qualité × marge de "
+        f"sécurité = risque faible</div></div></div>",
+        unsafe_allow_html=True,
+    )
+
+    # ── Tableau des 4 piliers avec étoiles ───────────────────────────
+    rows = []
+    for p in risk["pillars"]:
+        score_str = f"{p['score']:.0f}/100" if p["score"] is not None else "—"
+        pts = (f"{p['points']:.1f} / {p['weight']}"
+               if p["points"] is not None else f"— / {p['weight']}")
+        rows.append({
+            "Pilier": p["label"],
+            "Étoiles": p["stars_str"],
+            "Score": score_str,
+            "Points": pts,
+            "Détail": p["hint"],
+        })
+    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
+    # ── 5 chiffres clés ──────────────────────────────────────────────
+    figs = risk["key_figures"]
+    if figs:
+        st.markdown("**5 chiffres clés derrière le score**")
+        cols = st.columns(len(figs))
+        for col, f in zip(cols, figs):
+            col.metric(f["label"], f["value"])
+        st.caption("Source des chiffres : yfinance (TTM / derniers exercices). "
+                   "À recouper avec les documents primaires de l'émetteur.")
+
+    # ── Narratif : reproche + catalyseurs ────────────────────────────
+    narrative = get_risk_narrative(ticker, name, info, risk)
+    c_rep, c_cat = st.columns(2)
+    with c_rep:
+        st.markdown("**⚠️ Le seul reproche majeur**")
+        st.markdown(narrative["major_reproach"])
+    with c_cat:
+        st.markdown("**🚀 3 catalyseurs à surveiller**")
+        for cat in narrative["catalysts"]:
+            st.markdown(f"- {cat}")
+    if narrative.get("verdict_note"):
+        st.caption(f"💭 {narrative['verdict_note']}")
+    st.caption(
+        f"Analyse : {narrative.get('source', 'heuristique')}. "
+        "⚖️ **Ceci n'est pas un conseil en investissement** — données publiques "
+        "pouvant comporter des imprécisions, à vérifier avant toute décision."
+    )
+
+
 def render(ticker: str, on_back) -> None:
     """Affiche la fiche détaillée pour `ticker`. `on_back` ferme la fiche."""
     info = get_info(ticker)
@@ -216,6 +285,11 @@ def render(ticker: str, on_back) -> None:
         f"</div>",
         unsafe_allow_html=True,
     )
+    st.divider()
+
+    # ── Risk score (verdict, piliers, reproche, catalyseurs) ────────
+    _render_risk_score(ticker, name, info, score_data)
+
     st.divider()
 
     # ── Radar + Indicateurs clés ────────────────────────────────────
